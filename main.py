@@ -49,6 +49,7 @@ RIGHT = Vector2(1, 0)
 
 # Initialize the pg engine
 pg.init()
+pg.mixer.init()
 
 
 # Loading resources
@@ -57,6 +58,7 @@ def load_resources(path: str) -> pg.Surface:
 
 
 # Load sprites
+EAT_SFX = pg.mixer.Sound("resources/sounds/eat.ogg")
 ICON = load_resources("resources/icon.png")
 SNAKE = {
     # Head
@@ -329,11 +331,13 @@ class Game:
             game.state = "GAME_OVER"
             return
 
+        # Check if the snake has collided with the food
         if check_collision(
             self.snake.body[-1],
             self.food.pos,
             self.food.pos + Vector2(self.food.size, self.food.size),
         ):
+            EAT_SFX.play()
             self.snake.increase_in_next_tick = True
             self.food.update(generate_food_position(self.snake.body, self.food.size))
 
