@@ -62,6 +62,16 @@ SNAKE = {
     "TAIL_RIGHT": load_resources("resources/sprites/snake/tail_right.png"),
 }
 FOOD_SPRITE = load_resources("resources/sprites/food.png")
+FENCE_SPRITE = {
+    "VERTICAL_MID": load_resources("resources/sprites/fences/fence_vertical_mid.png"),
+    "HORIZONTAL_MID": load_resources(
+        "resources/sprites/fences/fence_horizontal_mid.png"
+    ),
+    "TOP_LEFT": load_resources("resources/sprites/fences/fence_top_left.png"),
+    "TOP_RIGHT": load_resources("resources/sprites/fences/fence_top_right.png"),
+    "BOT_LEFT": load_resources("resources/sprites/fences/fence_bot_left.png"),
+    "BOT_RIGHT": load_resources("resources/sprites/fences/fence_bot_right.png"),
+}
 
 # Snake's direction mapping
 SNAKE_HEAD = {
@@ -219,6 +229,7 @@ class Snake(GameObject):
 
 
 class Food(GameObject):
+    # size of the food intended to make the food bigger (like the childhood Nokia snake game)
     def __init__(self, snake_body: list[Vector2], size: int = 1):
         super(Food, self).__init__()
         self.pos = generate_food_position(snake_body, size)
@@ -284,6 +295,8 @@ class Game:
     def draw(self):
         screen.fill((65, 152, 10))
         self.draw_board()
+        self.draw_fence()
+
         self.snake.draw()
         self.food.draw()
 
@@ -298,6 +311,56 @@ class Game:
                         CELL_SIZE,
                     )
                     pg.draw.rect(screen, (0, 100, 0), cell_rect)
+
+    def draw_fence(self):
+        # Draw the horizontal fence
+        screen.blit(
+            FENCE_SPRITE["TOP_LEFT"],
+            (HORIZONTAL_OFFSET - CELL_SIZE, TOP_OFFSET - CELL_SIZE),
+        )
+        screen.blit(
+            FENCE_SPRITE["BOT_LEFT"],
+            (HORIZONTAL_OFFSET - CELL_SIZE, HEIGHT - BOT_OFFSET),
+        )
+        for x in range(CELL_HORIZONTAL_COUNTONTAL_COUNT):
+            # Draw the top fence
+            screen.blit(
+                FENCE_SPRITE["HORIZONTAL_MID"],
+                (x * CELL_SIZE + HORIZONTAL_OFFSET, TOP_OFFSET - CELL_SIZE),
+            )
+            # Draw the bottom fence
+            screen.blit(
+                FENCE_SPRITE["HORIZONTAL_MID"],
+                (x * CELL_SIZE + HORIZONTAL_OFFSET, HEIGHT - BOT_OFFSET),
+            )
+        screen.blit(
+            FENCE_SPRITE["TOP_RIGHT"],
+            (
+                CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE + HORIZONTAL_OFFSET,
+                TOP_OFFSET - CELL_SIZE,
+            ),
+        )
+        screen.blit(
+            FENCE_SPRITE["BOT_RIGHT"],
+            (
+                CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE + HORIZONTAL_OFFSET,
+                HEIGHT - BOT_OFFSET,
+            ),
+        )
+
+        # Draw the vertical fences
+        for y in range(CELL_VERTICAL_COUNT):
+            screen.blit(
+                FENCE_SPRITE["VERTICAL_MID"],
+                (HORIZONTAL_OFFSET - CELL_SIZE, y * CELL_SIZE + TOP_OFFSET),
+            )
+            screen.blit(
+                FENCE_SPRITE["VERTICAL_MID"],
+                (
+                    CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE + HORIZONTAL_OFFSET,
+                    y * CELL_SIZE + TOP_OFFSET,
+                ),
+            )
 
     def toggle_pause(self):
         if self.state == "GAME_OVER":
