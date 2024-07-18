@@ -3,12 +3,11 @@ PySnake
 Author: sxntrxn (tranxuanson2013@gmail.com)
 """
 
-import pygame
+import pygame as pg
 from pygame.math import Vector2
 
 from abc import ABC, abstractmethod
 from random import randint
-from pathlib import Path
 from typing import Tuple
 
 # Configuration screen
@@ -16,26 +15,109 @@ TOP_OFFSET = 150
 HORIZONTAL_OFFSET = 50
 BOT_OFFSET = 50
 
-CELL_SIZE = 20
+# User's Input
 CELL_HORIZONTAL_COUNTONTAL_COUNT = 10
 CELL_VERTICAL_COUNT = 10
-WIDTH = CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE + 2 * HORIZONTAL_OFFSET
-HEIGHT = CELL_VERTICAL_COUNT * CELL_SIZE + TOP_OFFSET + BOT_OFFSET
 
-print(f"WIDTH: {WIDTH}, HEIGHT: {HEIGHT}")
-print(
-    f"CELL_HORIZONTAL_COUNTONTAL_COUNT: {CELL_HORIZONTAL_COUNTONTAL_COUNT}, CELL_VERTICAL_COUNT: {CELL_VERTICAL_COUNT}"
-)
+# Calculate the width and height of the screen
+CELL_SIZE = 32
+PLAY_AREA_WIDTH = CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE
+PLAY_AREA_HEIGHT = CELL_VERTICAL_COUNT * CELL_SIZE
+WIDTH = PLAY_AREA_WIDTH + 2 * HORIZONTAL_OFFSET
+HEIGHT = PLAY_AREA_HEIGHT + TOP_OFFSET + BOT_OFFSET
 
-# Initialize the Pygame engine
-pygame.init()
+# Direction constants
+UP = Vector2(0, -1)
+DOWN = Vector2(0, 1)
+LEFT = Vector2(-1, 0)
+RIGHT = Vector2(1, 0)
+
+# Initialize the pg engine
+pg.init()
+
+
+# Loading resources
+def load_resources(path: str) -> pg.Surface:
+    return pg.transform.scale(pg.image.load(path), (CELL_SIZE, CELL_SIZE))
+
+
+# Load sprites
+SNAKE = {
+    # Head
+    "HEAD_UP": load_resources("resources/sprites/snake/head_up.png"),
+    "HEAD_DOWN": load_resources("resources/sprites/snake/head_down.png"),
+    "HEAD_LEFT": load_resources("resources/sprites/snake/head_left.png"),
+    "HEAD_RIGHT": load_resources("resources/sprites/snake/head_right.png"),
+    # Body
+    "BODY_HORIZONTAL": load_resources("resources/sprites/snake/body_horizontal.png"),
+    "BODY_VERTICAL": load_resources("resources/sprites/snake/body_vertical.png"),
+    "BODY_TOP_LEFT": load_resources("resources/sprites/snake/body_tl.png"),
+    "BODY_TOP_RIGHT": load_resources("resources/sprites/snake/body_tr.png"),
+    "BODY_BOTTOM_LEFT": load_resources("resources/sprites/snake/body_bl.png"),
+    "BODY_BOTTOM_RIGHT": load_resources("resources/sprites/snake/body_br.png"),
+    # Tail
+    "TAIL_UP": load_resources("resources/sprites/snake/tail_up.png"),
+    "TAIL_DOWN": load_resources("resources/sprites/snake/tail_down.png"),
+    "TAIL_LEFT": load_resources("resources/sprites/snake/tail_left.png"),
+    "TAIL_RIGHT": load_resources("resources/sprites/snake/tail_right.png"),
+}
+FOOD_SPRITE = load_resources("resources/sprites/food.png")
+
+# Snake's direction mapping
+SNAKE_HEAD = {
+    tuple(UP): SNAKE["HEAD_UP"],
+    tuple(DOWN): SNAKE["HEAD_DOWN"],
+    tuple(LEFT): SNAKE["HEAD_LEFT"],
+    tuple(RIGHT): SNAKE["HEAD_RIGHT"],
+}
+
+SNAKE_TAIL = {
+    tuple(UP): SNAKE["TAIL_UP"],
+    tuple(DOWN): SNAKE["TAIL_DOWN"],
+    tuple(LEFT): SNAKE["TAIL_LEFT"],
+    tuple(RIGHT): SNAKE["TAIL_RIGHT"],
+}
+
+SNAKE_BODY = {
+    # Going in the straight line
+    tuple((tuple(UP), tuple(UP))): SNAKE["BODY_VERTICAL"],
+    tuple((tuple(DOWN), tuple(DOWN))): SNAKE["BODY_VERTICAL"],
+    tuple((tuple(LEFT), tuple(LEFT))): SNAKE["BODY_HORIZONTAL"],
+    tuple((tuple(RIGHT), tuple(RIGHT))): SNAKE["BODY_HORIZONTAL"],
+    # Curve
+    tuple((tuple(UP), tuple(LEFT))): SNAKE["BODY_TOP_RIGHT"],
+    tuple((tuple(UP), tuple(RIGHT))): SNAKE["BODY_TOP_LEFT"],
+    tuple((tuple(DOWN), tuple(LEFT))): SNAKE["BODY_BOTTOM_RIGHT"],
+    tuple((tuple(DOWN), tuple(RIGHT))): SNAKE["BODY_BOTTOM_LEFT"],
+    tuple((tuple(LEFT), tuple(UP))): SNAKE["BODY_BOTTOM_LEFT"],
+    tuple((tuple(LEFT), tuple(DOWN))): SNAKE["BODY_TOP_LEFT"],
+    tuple((tuple(RIGHT), tuple(UP))): SNAKE["BODY_BOTTOM_RIGHT"],
+    tuple((tuple(RIGHT), tuple(DOWN))): SNAKE["BODY_TOP_RIGHT"],
+}
+
+
+# Search snake mapping
+def search_snake_mapping(
+    d: dict[tuple, pg.Surface], *directions: Vector2
+) -> pg.Surface:
+    if len(directions) == 1:
+        direction = tuple(directions[0])
+        if direction in d:
+            return d[direction]
+        raise Exception(f"Direction {direction} not found in the mapping")
+    else:
+        direction = tuple(list(tuple(_direction) for _direction in directions))
+        if direction in d:
+            return d[direction]
+        raise Exception(f"Direction {direction} not found in the mapping")
+
 
 # Set up the drawing window
-screen = pygame.display.set_mode(size=[WIDTH, HEIGHT])
-pygame.display.set_caption("PySnake")
+screen = pg.display.set_mode(size=[WIDTH, HEIGHT])
+pg.display.set_caption("PySnake")
 
 # Set up clock
-clock = pygame.time.Clock()
+clock = pg.time.Clock()
 
 
 def calculate_position(x: int, y: int) -> Tuple[int, int]:
@@ -64,11 +146,10 @@ def generate_food_position(snake_body: list[Vector2], size: int) -> Vector2:
             return pos
         failed_attempts += 1
         if failed_attempts > 100:
-            # Temporary solution, in the future, we should tell the user that the game is over
-            raise Exception("No valid position found for the food")
+            return None
 
 
-class GameObject(pygame.sprite.Sprite):
+class GameObject(ABC):
     @abstractmethod
     def draw(self):
         pass
@@ -76,24 +157,61 @@ class GameObject(pygame.sprite.Sprite):
 
 class Snake(GameObject):
     body: list[Vector2] = [Vector2(0, 0), Vector2(1, 0), Vector2(2, 0)]
-    direction = Vector2(1, 0)
+    # The intended direction of the snake, this will be updated to the current direction every tick
+    direction = RIGHT
+    # The current direction of the snake
+    current_direction = RIGHT
 
     def __init__(self):
         super(Snake, self).__init__()
 
     def draw(self):
-        for body_part in self.body:
-            translated_pos = calculate_position(body_part.x, body_part.y)
-            body_part_rect = pygame.rect.Rect(
+        # Draw the head
+        head = search_snake_mapping(SNAKE_HEAD, self.current_direction)
+        translated_pos = calculate_position(self.body[-1].x, self.body[-1].y)
+        head_rect = pg.rect.Rect(
+            translated_pos[0], translated_pos[1], CELL_SIZE, CELL_SIZE
+        )
+        screen.blit(head, head_rect)
+
+        # Draw the body
+        for body_index in range(1, len(self.body) - 1):
+            # Get the direction of the body part
+            first_body_part_direction = (
+                self.body[body_index] - self.body[body_index - 1]
+            )
+            second_body_part_direction = (
+                self.body[body_index + 1] - self.body[body_index]
+            )
+            # print(f"Body part direction: {body_part_direction}")
+            body = search_snake_mapping(
+                SNAKE_BODY, first_body_part_direction, second_body_part_direction
+            )
+
+            translated_pos = calculate_position(
+                self.body[body_index].x, self.body[body_index].y
+            )
+            body_rect = pg.rect.Rect(
                 translated_pos[0], translated_pos[1], CELL_SIZE, CELL_SIZE
             )
-            pygame.draw.rect(screen, (255, 255, 0), body_part_rect)
+            screen.blit(body, body_rect)
+
+        # Draw the tail
+        tail_direction = self.body[1] - self.body[0]
+        tail = search_snake_mapping(SNAKE_TAIL, tail_direction)
+        translated_pos = calculate_position(self.body[0].x, self.body[0].y)
+        tail_rect = pg.rect.Rect(
+            translated_pos[0], translated_pos[1], CELL_SIZE, CELL_SIZE
+        )
+        screen.blit(tail, tail_rect)
 
     def move(self):
+        # Update the current direction
+        self.current_direction = self.direction
         # Copy the body parts of the snake except the tail
         body_copy = self.body[1:]
         # Calculate the new head based on the current direction
-        new_head = self.body[-1] + self.direction
+        new_head = self.body[-1] + self.current_direction
         # Insert the new head at the last position
         body_copy.append(new_head)
         # Update the body
@@ -108,56 +226,90 @@ class Food(GameObject):
 
     def draw(self):
         translated_pos = calculate_position(self.pos.x, self.pos.y)
-        food_rect = pygame.rect.Rect(
+        food_rect = pg.rect.Rect(
             translated_pos[0],
             translated_pos[1],
             CELL_SIZE * self.size,
             CELL_SIZE * self.size,
         )
-        pygame.draw.rect(screen, (255, 0, 0), food_rect)
+        screen.blit(FOOD_SPRITE, food_rect)
 
     def update(self, pos: Vector2):
         self.pos = pos
 
 
 class Game:
+    state = "RUNNING"
+
     def __init__(self):
         self.snake = Snake()
-        self.food = Food(self.snake.body, 5)
+        self.food = Food(self.snake.body, 1)
 
     def tick(self):
         self.snake.move()
+
+        # Check if the snake has collided with itself
+        if any(
+            check_collision(self.snake.body[-1], body_part, body_part + Vector2(1, 1))
+            for body_part in self.snake.body[:-1]
+        ):
+            print("Game Over")
+            pg.quit()
+            exit
+
+        # Check if the snake has collided with the boundaries
+        if not check_collision(
+            self.snake.body[-1],
+            Vector2(0, 0),
+            Vector2(CELL_HORIZONTAL_COUNTONTAL_COUNT, CELL_VERTICAL_COUNT),
+        ):
+            print("Game Over")
+            pg.quit()
+            exit
+
         if check_collision(
             self.snake.body[-1],
             self.food.pos,
             self.food.pos + Vector2(self.food.size, self.food.size),
         ):
-            self.snake.body.insert(0, self.snake.body[0])
+            self.snake.body.append(self.snake.body[-1] + self.snake.current_direction)
             self.food.update(generate_food_position(self.snake.body, self.food.size))
 
     def change_snake_direction(self, direction: Vector2):
         self.snake.direction = direction
 
     def get_snake_direction(self) -> Vector2:
-        return self.snake.direction
+        return self.snake.current_direction
 
     def draw(self):
         screen.fill((65, 152, 10))
+        self.draw_board()
         self.snake.draw()
         self.food.draw()
 
+    def draw_board(self):
+        for x in range(CELL_HORIZONTAL_COUNTONTAL_COUNT):
+            for y in range(CELL_VERTICAL_COUNT):
+                if (x + y) % 2 == 0:
+                    cell_rect = pg.rect.Rect(
+                        x * CELL_SIZE + HORIZONTAL_OFFSET,
+                        y * CELL_SIZE + TOP_OFFSET,
+                        CELL_SIZE,
+                        CELL_SIZE,
+                    )
+                    pg.draw.rect(screen, (0, 100, 0), cell_rect)
 
-# Direction constants
-MOVE_UP = Vector2(0, -1)
-MOVE_DOWN = Vector2(0, 1)
-MOVE_LEFT = Vector2(-1, 0)
-MOVE_RIGHT = Vector2(1, 0)
+    def toggle_pause(self):
+        if self.state == "GAME_OVER":
+            return
+        self.state = "PAUSED" if self.state == "RUNNING" else "RUNNING"
+
 
 # User events
-GAME_TICK = pygame.USEREVENT
+GAME_TICK = pg.USEREVENT
 # Set the tickrate of the game
-pygame.time.set_timer(GAME_TICK, 150)
-
+TICKRATE = 1
+pg.time.set_timer(GAME_TICK, 1000 // TICKRATE)
 game = Game()
 
 # Run until the user asks to quit
@@ -165,30 +317,32 @@ running = True
 while running:
 
     # Handle events
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+    for event in pg.event.get():
+        if event.type == pg.QUIT:
             running = False
         # Move thticke everytick
-        if event.type == GAME_TICK:
+        if event.type == GAME_TICK and not game.state == "PAUSED":
             game.tick()
         # Handle key press events
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP and game.get_snake_direction().y == 0:
-                game.change_snake_direction(MOVE_UP)
-            if event.key == pygame.K_DOWN and game.get_snake_direction().y == 0:
-                game.change_snake_direction(MOVE_DOWN)
-            if event.key == pygame.K_LEFT and game.get_snake_direction().x == 0:
-                game.change_snake_direction(MOVE_LEFT)
-            if event.key == pygame.K_RIGHT and game.get_snake_direction().x == 0:
-                game.change_snake_direction(MOVE_RIGHT)
+        if event.type == pg.KEYDOWN:
+            if event.key == pg.K_UP and game.get_snake_direction().y == 0:
+                game.change_snake_direction(UP)
+            if event.key == pg.K_DOWN and game.get_snake_direction().y == 0:
+                game.change_snake_direction(DOWN)
+            if event.key == pg.K_LEFT and game.get_snake_direction().x == 0:
+                game.change_snake_direction(LEFT)
+            if event.key == pg.K_RIGHT and game.get_snake_direction().x == 0:
+                game.change_snake_direction(RIGHT)
+            if event.key == pg.K_SPACE:
+                game.toggle_pause()
 
     # Draw all game objects
     game.draw()
 
     # Update the screen
-    pygame.display.update()
+    pg.display.update()
     # Maintain a frame rate of 60 frames per second
     clock.tick(60)
 
 # Quit the game
-pygame.quit()
+pg.quit()
