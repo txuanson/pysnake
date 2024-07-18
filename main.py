@@ -11,16 +11,31 @@ from random import randint
 from typing import Tuple
 
 # Configuration screen
-TOP_OFFSET = 150
-HORIZONTAL_OFFSET = 50
-BOT_OFFSET = 50
+CELL_SIZE = 32
+TOP_OFFSET = CELL_SIZE * 5
+HORIZONTAL_OFFSET = CELL_SIZE
+BOT_OFFSET = CELL_SIZE * 2
+
+# Text shadow offset
+TEXT_SHADOW_OFFSET = 4
 
 # User's Input
-CELL_HORIZONTAL_COUNTONTAL_COUNT = 10
-CELL_VERTICAL_COUNT = 10
+CELL_HORIZONTAL_COUNTONTAL_COUNT = 0
+CELL_VERTICAL_COUNT = 0
+
+while CELL_HORIZONTAL_COUNTONTAL_COUNT <= 3:
+    CELL_HORIZONTAL_COUNTONTAL_COUNT = int(
+        input("Enter the horizontal count of cells: ")
+    )
+    if CELL_HORIZONTAL_COUNTONTAL_COUNT <= 3:
+        print("Invalid input. Please enter a number greater than 3.")
+
+while CELL_VERTICAL_COUNT <= 3:
+    CELL_VERTICAL_COUNT = int(input("Enter the vertical count of cells: "))
+    if CELL_VERTICAL_COUNT <= 3:
+        print("Invalid input. Please enter a number greater than 3.")
 
 # Calculate the width and height of the screen
-CELL_SIZE = 32
 PLAY_AREA_WIDTH = CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_SIZE
 PLAY_AREA_HEIGHT = CELL_VERTICAL_COUNT * CELL_SIZE
 WIDTH = PLAY_AREA_WIDTH + 2 * HORIZONTAL_OFFSET
@@ -42,6 +57,7 @@ def load_resources(path: str) -> pg.Surface:
 
 
 # Load sprites
+ICON = load_resources("resources/icon.png")
 SNAKE = {
     # Head
     "HEAD_UP": load_resources("resources/sprites/snake/head_up.png"),
@@ -125,6 +141,7 @@ def search_snake_mapping(
 # Set up the drawing window
 screen = pg.display.set_mode(size=[WIDTH, HEIGHT])
 pg.display.set_caption("PySnake")
+pg.display.set_icon(ICON)
 
 # Set up clock
 clock = pg.time.Clock()
@@ -171,6 +188,8 @@ class Snake(GameObject):
     direction = RIGHT
     # The current direction of the snake
     current_direction = RIGHT
+    # Flag to increase the length of the snake
+    increase_in_next_tick = False
 
     def __init__(self):
         super(Snake, self).__init__()
@@ -218,6 +237,17 @@ class Snake(GameObject):
     def move(self):
         # Update the current direction
         self.current_direction = self.direction
+
+        # Increase the length of the snake if the flag is set and clear the flag
+        # Also do a circuit break to prevent the snake from going forward
+        if self.increase_in_next_tick:
+            self.increase_in_next_tick = False
+            new_head = self.body[-1] + self.current_direction
+            body_copy = self.body[:]
+            body_copy.append(new_head)
+            self.body = body_copy[:]
+            return
+
         # Copy the body parts of the snake except the tail
         body_copy = self.body[1:]
         # Calculate the new head based on the current direction
@@ -250,23 +280,45 @@ class Food(GameObject):
 
 
 class Game:
-    state = "RUNNING"
+    # The current state of the game
+    # NOT_YET_STARTED: The game has not started yet
+    # RUNNING: The game is running
+    # PAUSED: The game is paused
+    # GAME_OVER: The game is over
+    state = "NOT_YET_STARTED"
 
     def __init__(self):
+        self.init()
+
+    def init(self):
         self.snake = Snake()
         self.food = Food(self.snake.body, 1)
 
+    def start(self):
+        self.init()
+        self.state = "RUNNING"
+
     def tick(self):
+        if self.state != "RUNNING":
+            return
+
         self.snake.move()
+
+        # Check if the snake cover the whole board
+        if (
+            len(self.snake.body) - 3
+            == CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_VERTICAL_COUNT
+        ):
+            self.state = "GAME_OVER"
+            return
 
         # Check if the snake has collided with itself
         if any(
             check_collision(self.snake.body[-1], body_part, body_part + Vector2(1, 1))
             for body_part in self.snake.body[:-1]
         ):
-            print("Game Over")
-            pg.quit()
-            exit
+            game.state = "GAME_OVER"
+            return
 
         # Check if the snake has collided with the boundaries
         if not check_collision(
@@ -274,16 +326,15 @@ class Game:
             Vector2(0, 0),
             Vector2(CELL_HORIZONTAL_COUNTONTAL_COUNT, CELL_VERTICAL_COUNT),
         ):
-            print("Game Over")
-            pg.quit()
-            exit
+            game.state = "GAME_OVER"
+            return
 
         if check_collision(
             self.snake.body[-1],
             self.food.pos,
             self.food.pos + Vector2(self.food.size, self.food.size),
         ):
-            self.snake.body.append(self.snake.body[-1] + self.snake.current_direction)
+            self.snake.increase_in_next_tick = True
             self.food.update(generate_food_position(self.snake.body, self.food.size))
 
     def change_snake_direction(self, direction: Vector2):
@@ -294,23 +345,47 @@ class Game:
 
     def draw(self):
         screen.fill((65, 152, 10))
+
+        if self.state == "NOT_YET_STARTED":
+            self.draw_start_screen()
+            return
+
+        if self.state == "GAME_OVER":
+            self.draw_game_over()
+            return
+
         self.draw_board()
         self.draw_fence()
+        self.draw_score()
 
         self.snake.draw()
         self.food.draw()
 
+    def draw_start_screen(self):
+        game_name_font = pg.font.Font(None, 48)
+        # Draw the shadow of the text
+        game_name_text = game_name_font.render("Press SPACE to start", True, (0, 0, 0))
+        game_name_text_rect = game_name_text.get_rect(
+            center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, HEIGHT // 2)
+        )
+        screen.blit(game_name_text, game_name_text_rect)
+        # Draw the actual text
+        game_name_text = game_name_font.render(
+            "Press SPACE to start", True, (255, 255, 255)
+        )
+        game_name_text_rect = game_name_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+        screen.blit(game_name_text, game_name_text_rect)
+
     def draw_board(self):
         for x in range(CELL_HORIZONTAL_COUNTONTAL_COUNT):
-            for y in range(CELL_VERTICAL_COUNT):
-                if (x + y) % 2 == 0:
-                    cell_rect = pg.rect.Rect(
-                        x * CELL_SIZE + HORIZONTAL_OFFSET,
-                        y * CELL_SIZE + TOP_OFFSET,
-                        CELL_SIZE,
-                        CELL_SIZE,
-                    )
-                    pg.draw.rect(screen, (0, 100, 0), cell_rect)
+            for y in range(x % 2, CELL_VERTICAL_COUNT, 2):
+                cell_rect = pg.rect.Rect(
+                    x * CELL_SIZE + HORIZONTAL_OFFSET,
+                    y * CELL_SIZE + TOP_OFFSET,
+                    CELL_SIZE,
+                    CELL_SIZE,
+                )
+                pg.draw.rect(screen, (0, 100, 0), cell_rect)
 
     def draw_fence(self):
         # Draw the horizontal fence
@@ -362,10 +437,130 @@ class Game:
                 ),
             )
 
-    def toggle_pause(self):
-        if self.state == "GAME_OVER":
-            return
-        self.state = "PAUSED" if self.state == "RUNNING" else "RUNNING"
+    def draw_score(self):
+        # Draw the score panel
+        score_panel_rect = pg.rect.Rect(
+            HORIZONTAL_OFFSET - (CELL_SIZE // 2),
+            CELL_SIZE // 2,
+            PLAY_AREA_WIDTH + CELL_SIZE,
+            TOP_OFFSET - 2 * CELL_SIZE,
+        )
+        pg.draw.rect(screen, (255, 255, 255), score_panel_rect, 2)
+
+        # Draw the game name and the author under
+        game_name_font = pg.font.Font(None, 48)
+        # Draw the shadow of the text
+        game_name_text = game_name_font.render("PySnake", True, (0, 0, 0))
+        game_name_text_rect = game_name_text.get_rect(
+            center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, CELL_SIZE + CELL_SIZE // 2)
+        )
+        screen.blit(game_name_text, game_name_text_rect)
+        # Draw the actual text
+        game_name_text = game_name_font.render("PySnake", True, (255, 255, 255))
+        game_name_text_rect = game_name_text.get_rect(
+            center=(WIDTH // 2, CELL_SIZE + CELL_SIZE // 2)
+        )
+        screen.blit(game_name_text, game_name_text_rect)
+
+        # Draw the score text
+        score_font = pg.font.Font(None, 36)
+        score_text = score_font.render(
+            f"Score: {len(self.snake.body) - 3}", True, (255, 255, 255)
+        )
+        score_text_rect = score_text.get_rect(
+            center=(WIDTH // 2, TOP_OFFSET // 2 + CELL_SIZE // 2)
+        )
+        screen.blit(score_text, score_text_rect)
+
+        # Draw the instruction to pause the game
+        pause_font = pg.font.Font(None, 24)
+        pause_text = pause_font.render(
+            (
+                "Press SPACE to pause"
+                if self.state == "RUNNING"
+                else "Press SPACE to resume"
+            ),
+            True,
+            (255, 255, 255),
+        )
+        pause_text_rect = pause_text.get_rect(
+            center=(
+                WIDTH // 2,
+                TOP_OFFSET + PLAY_AREA_HEIGHT + CELL_SIZE + CELL_SIZE // 2,
+            )
+        )
+        screen.blit(pause_text, pause_text_rect)
+
+    def draw_game_over(self):
+        game_over_font = pg.font.Font(None, 48)
+        # Draw the shadow of the text
+        game_over_text = game_over_font.render("Game Over", True, (0, 0, 0))
+        game_over_text_rect = game_over_text.get_rect(
+            center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, HEIGHT // 2 - 2 * CELL_SIZE)
+        )
+        screen.blit(game_over_text, game_over_text_rect)
+        # Draw the actual text
+        game_over_text = game_over_font.render("Game Over", True, (255, 255, 255))
+        game_over_text_rect = game_over_text.get_rect(
+            center=(WIDTH // 2, HEIGHT // 2 - 2 * CELL_SIZE)
+        )
+        screen.blit(game_over_text, game_over_text_rect)
+
+        # Draw the score text
+        score_font = pg.font.Font(None, 36)
+        score_text = score_font.render(
+            f"Score: {len(self.snake.body) - 3}", True, (255, 255, 255)
+        )
+        score_text_rect = score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+        screen.blit(score_text, score_text_rect)
+
+        # Draw the win or lose message
+        if (
+            len(self.snake.body) - 3
+            == CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_VERTICAL_COUNT
+        ):
+            win_font = pg.font.Font(None, 36)
+            # Draw the shadow of the text
+            win_text = win_font.render("You Win!", True, (0, 0, 0))
+            win_text_rect = win_text.get_rect(
+                center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, HEIGHT // 2 + 4 * CELL_SIZE)
+            )
+            screen.blit(win_text, win_text_rect)
+            # Draw the actual text
+            win_text = win_font.render("You Win!", True, (255, 255, 255))
+            win_text_rect = win_text.get_rect(
+                center=(WIDTH // 2, HEIGHT // 2 + 4 * CELL_SIZE)
+            )
+            screen.blit(win_text, win_text_rect)
+        else:
+            lose_font = pg.font.Font(None, 36)
+            # Draw the shadow of the text
+            lose_text = lose_font.render("You Lose!", True, (0, 0, 0))
+            lose_text_rect = lose_text.get_rect(
+                center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, HEIGHT // 2 + 4 * CELL_SIZE)
+            )
+            screen.blit(lose_text, lose_text_rect)
+            # Draw the actual text
+            lose_text = lose_font.render("You Lose!", True, (255, 255, 255))
+            lose_text_rect = lose_text.get_rect(
+                center=(WIDTH // 2, HEIGHT // 2 + 4 * CELL_SIZE)
+            )
+            screen.blit(lose_text, lose_text_rect)
+
+        # Draw the instruction to restart the game
+        restart_font = pg.font.Font(None, 24)
+        # Draw the shadow of the text
+        restart_text = restart_font.render("Press SPACE to restart", True, (0, 0, 0))
+        restart_text_rect = restart_text.get_rect(
+            center=(WIDTH // 2 + TEXT_SHADOW_OFFSET, HEIGHT // 2 + 6 * CELL_SIZE)
+        )
+        screen.blit(restart_text, restart_text_rect)
+
+    def on_space_pressed(self):
+        if self.state == "GAME_OVER" or self.state == "NOT_YET_STARTED":
+            self.start()
+        else:
+            self.state = "PAUSED" if self.state == "RUNNING" else "RUNNING"
 
 
 # User events
@@ -384,7 +579,7 @@ while running:
         if event.type == pg.QUIT:
             running = False
         # Move thticke everytick
-        if event.type == GAME_TICK and not game.state == "PAUSED":
+        if event.type == GAME_TICK:
             game.tick()
         # Handle key press events
         if event.type == pg.KEYDOWN:
@@ -397,7 +592,7 @@ while running:
             if event.key == pg.K_RIGHT and game.get_snake_direction().x == 0:
                 game.change_snake_direction(RIGHT)
             if event.key == pg.K_SPACE:
-                game.toggle_pause()
+                game.on_space_pressed()
 
     # Draw all game objects
     game.draw()
