@@ -15,7 +15,7 @@ Author: sxntrxn
     ```
   - For macOS/Linux:
     ```
-    source .venv/bin/activate
+    source .venv/Scripts/activate
     ```
 
 3. Once the virtual environment is activated, install the dependencies from the `requirements.txt` file by running the following command:
