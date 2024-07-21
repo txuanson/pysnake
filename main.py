@@ -163,19 +163,19 @@ def check_collision(target: Vector2, top_left: Vector2, bottom_right: Vector2) -
 
 # Generate a random position for the food that is not colliding with the snake
 def generate_food_position(snake_body: list[Vector2], size: int) -> Vector2:
-    failed_attempts = 0
-    while True:
-        pos_x = randint(0, CELL_HORIZONTAL_COUNTONTAL_COUNT - size)
-        pos_y = randint(0, CELL_VERTICAL_COUNT - size)
-        pos = Vector2(pos_x, pos_y)
-        if all(
-            not check_collision(body_part, pos, pos + Vector2(size, size))
-            for body_part in snake_body
-        ):
-            return pos
-        failed_attempts += 1
-        if failed_attempts > 100:
-            return None
+    free_cells = []
+    for x in range(CELL_HORIZONTAL_COUNTONTAL_COUNT):
+        for y in range(CELL_VERTICAL_COUNT):
+            food_pos = Vector2(x, y)
+            if any(
+                check_collision(food_pos, body_part, body_part + Vector2(1, 1))
+                for body_part in snake_body
+            ):
+                continue
+            free_cells.append(food_pos)
+    if len(free_cells) == 0:
+        return None
+    return free_cells[randint(0, len(free_cells) - 1)]
 
 
 class GameObject(ABC):
@@ -308,7 +308,7 @@ class Game:
 
         # Check if the snake cover the whole board
         if (
-            len(self.snake.body) - 3
+            len(self.snake.body)
             == CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_VERTICAL_COUNT
         ):
             self.state = "GAME_OVER"
@@ -339,7 +339,11 @@ class Game:
         ):
             EAT_SFX.play()
             self.snake.increase_in_next_tick = True
-            self.food.update(generate_food_position(self.snake.body, self.food.size))
+            next_food_pos = generate_food_position(self.snake.body, self.food.size + 1)
+            if next_food_pos is None:
+                self.state = "GAME_OVER"
+                return
+            self.food.update(next_food_pos)
 
     def change_snake_direction(self, direction: Vector2):
         self.snake.direction = direction
@@ -520,7 +524,7 @@ class Game:
 
         # Draw the win or lose message
         if (
-            len(self.snake.body) - 3
+            len(self.snake.body)
             == CELL_HORIZONTAL_COUNTONTAL_COUNT * CELL_VERTICAL_COUNT
         ):
             win_font = pg.font.Font(None, 36)
